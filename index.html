@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atelier Frame Simulator</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        #display {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        #status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            display: none;
+        }
+        .error {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,0,0,0.1);
+            color: white;
+            padding: 20px;
+            border-radius: 5px;
+            font-family: monospace;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <img id="display" alt="Frame Display">
+    <div id="status"></div>
+
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { 
+            getFirestore, 
+            doc, 
+            onSnapshot, 
+            getDoc,
+            updateDoc
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIza8y8B5hcyug7m70mphVjQuVf8cg-D0mn4t44",
+            authDomain: "atelier-9f946.firebaseapp.com",
+            projectId: "atelier-9f946",
+            storageBucket: "atelier-9f946.firebasestorage.app",
+            messagingSenderId: "104019326958",
+            appId: "1:104019326958:web:3f83ccefbe7ca5710549dc"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // Get frame ID from URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const frameId = urlParams.get('frameId');
+
+        if (!frameId) {
+            document.body.innerHTML = '<div class="error">No frame ID provided.<br>Use ?frameId=YOUR_FRAME_ID in the URL.</div>';
+        } else {
+            const display = document.getElementById('display');
+            const status = document.getElementById('status');
+
+            // Listen for changes to the frame document
+            const frameRef = doc(db, 'frames', frameId);
+            onSnapshot(frameRef, async (snapshot) => {
+                if (snapshot.exists()) {
+                    const frameData = snapshot.data();
+                    
+                    // Update status indicator
+                    status.style.display = 'block';
+                    status.textContent = `Frame: ${frameData.name} | Status: ${frameData.status}`;
+                    
+                    if (frameData.currentImageId) {
+                        // Get the image document to get the URL
+                        const imageRef = doc(db, 'images', frameData.currentImageId);
+                        const imageSnap = await getDoc(imageRef);
+                        if (imageSnap.exists()) {
+                            const imageData = imageSnap.data();
+                            display.src = imageData.url;
+                        }
+                    } else {
+                        display.src = ''; // Clear the display if no image
+                    }
+                } else {
+                    document.body.innerHTML = '<div class="error">Frame not found</div>';
+                }
+            }, (error) => {
+                console.error("Error listening to frame:", error);
+                document.body.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            });
+
+            // Update frame status to online
+            const updateStatus = async () => {
+                try {
+                    await updateDoc(frameRef, {
+                        status: 'online',
+                        lastPing: Date.now()
+                    });
+                } catch (error) {
+                    console.error("Error updating status:", error);
+                }
+            };
+
+            // Update status immediately and every 30 seconds
+            updateStatus();
+            setInterval(updateStatus, 30000);
+
+            // Set status to offline when page is closed
+            window.addEventListener('beforeunload', async () => {
+                try {
+                    await updateDoc(frameRef, {
+                        status: 'offline',
+                        lastPing: Date.now()
+                    });
+                } catch (error) {
+                    console.error("Error updating offline status:", error);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
